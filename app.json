@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Best",
+    "slug": "best-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#060B18"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#060B18"
+      },
+      "package": "com.fantalgame.bestapp",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fantalgame.bestapp",
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
+        "NSLocationWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
+        "UIBackgroundModes": ["location", "fetch"]
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-location",
+      [
+        "expo-background-fetch",
+        {}
+      ],
+      "@react-native-firebase/app"
+    ],
+    "scheme": "bestapp",
+    "owner": "fantalgame"
+  }
+}

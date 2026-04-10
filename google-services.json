@@ -1,0 +1,28 @@
+{
+  "project_info": {
+    "project_number": "748001379375",
+    "project_id": "fantalgame",
+    "storage_bucket": "fantalgame.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:748001379375:android:best001",
+        "android_client_info": {
+          "package_name": "com.fantalgame.bestapp"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQiOnzh9YpI09XSDDhm7SdJI1TEWTkTDI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
