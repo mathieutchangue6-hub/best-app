@@ -44,10 +44,11 @@
       "@react-native-firebase/app"
     ],
     "scheme": "bestapp",
-    "owner": "fantalgame"
-  }
+    "owner": "fantalgame",
   "extra": {
     "eas": {
       "projectId": "2915fad6-0703-4e76-bac6-902df1055ea5"
     }
+  }
+  }
 }
