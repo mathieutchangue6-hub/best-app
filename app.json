@@ -17,6 +17,7 @@
         "backgroundColor": "#060B18"
       },
       "package": "com.fantalgame.bestapp",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
