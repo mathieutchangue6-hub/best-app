@@ -10,7 +10,7 @@
     "expo": "~52.0.0",
     "expo-router": "~4.0.0",
     "expo-location": "~18.0.4",
-    "expo-battery": "~13.0.2",
+    "expo-battery": "~13.0.1",
     "expo-task-manager": "~12.0.4",
     "expo-background-fetch": "~13.0.3",
     "expo-notifications": "~0.29.9",
