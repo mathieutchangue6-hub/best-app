@@ -16,7 +16,7 @@
         "foregroundImage": "./adaptive-icon.png",
         "backgroundColor": "#060B18"
       },
-      "package": "com.whiteroomrrr.bestapp",
+      "package": "com.fantalgame.bestapp",
       "googleServicesFile": "./google-services.json",
       "newArchEnabled": false,
       "permissions": [
@@ -29,7 +29,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.whiteroomrrr.bestapp",
+      "bundleIdentifier": "com.fantalgame.bestapp",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
         "NSLocationWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
