@@ -42,8 +42,7 @@
       [
         "expo-background-fetch",
         {}
-      ],
-      "@react-native-firebase/app"
+      ]
     ],
     "scheme": "bestapp",
     "owner": "whiteroomrrr",
