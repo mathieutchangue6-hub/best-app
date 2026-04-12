@@ -9,10 +9,6 @@
   "dependencies": {
     "expo": "~52.0.0",
     "expo-router": "~4.0.0",
-    "expo-location": "~18.0.4",
-    "expo-task-manager": "~12.0.4",
-    "expo-background-fetch": "~13.0.3",
-    "expo-notifications": "~0.29.9",
     "expo-status-bar": "~2.0.0",
     "expo-constants": "~17.0.0",
     "expo-linking": "~7.0.0",
