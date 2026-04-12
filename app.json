@@ -16,7 +16,7 @@
         "foregroundImage": "./adaptive-icon.png",
         "backgroundColor": "#060B18"
       },
-      "package": "com.fantalgame.bestapp",
+      "package": "com.whiteroomrrr.bestapp",
       "googleServicesFile": "./google-services.json",
       "newArchEnabled": false,
       "permissions": [
@@ -29,7 +29,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.fantalgame.bestapp",
+      "bundleIdentifier": "com.whiteroomrrr.bestapp",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
         "NSLocationWhenInUseUsageDescription": "Best a besoin de ta position pour la partager avec ta famille.",
@@ -46,11 +46,11 @@
       "@react-native-firebase/app"
     ],
     "scheme": "bestapp",
-    "owner": "fantalgame",
-  "extra": {
-    "eas": {
-      "projectId": "2915fad6-0703-4e76-bac6-902df1055ea5"
+    "owner": "whiteroomrrr",
+    "extra": {
+      "eas": {
+        "projectId": "d9d05a72-c07d-4958-932c-0f1f7d6548b0"
+      }
     }
-  }
   }
 }
