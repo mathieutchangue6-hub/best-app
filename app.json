@@ -18,7 +18,7 @@
       },
       "package": "com.fantalgame.bestapp",
       "googleServicesFile": "./google-services.json",
-      "newArchEnabled": false,
+      "newArchEnabled": true,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
