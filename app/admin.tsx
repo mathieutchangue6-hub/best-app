@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { router } from 'expo-router';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, StatusBar, SafeAreaView, Switch
@@ -12,6 +11,11 @@ export default function AdminScreen() {
   const [tab, setTab] = useState<'carte'|'membres'|'acces'|'historique'>('carte');
   const [selMember, setSelMember] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    setMapReady(true);
+  }, []);
 
   useEffect(() => {
     const unsubM = firestore().collection('members').onSnapshot(snap => {
@@ -38,6 +42,7 @@ export default function AdminScreen() {
   };
 
   const handleLogout = () => {
+    const { router } = require('expo-router');
     router.replace('/');
   };
 
@@ -81,7 +86,7 @@ export default function AdminScreen() {
 
       {tab === 'carte' && (
         <View style={{flex:1}}>
-          <MapView style={{height:300}} region={region} showsUserLocation={false}>
+          {mapReady && <MapView style={{height:300}} region={region} showsUserLocation={false}>
             {activeMembers.map(m => (
               <Marker key={m.uid} coordinate={{latitude:m.lat,longitude:m.lng}} onPress={() => setSelMember(m)}>
                 <View style={[s.markerWrap, {borderColor:m.color||'#A8FF3E'}]}>
@@ -92,7 +97,7 @@ export default function AdminScreen() {
                 </View>
               </Marker>
             ))}
-          </MapView>
+          </MapView>}
           {selMember && (
             <View style={[s.detailCard, {borderColor:selMember.color||'#A8FF3E'}]}>
               <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
