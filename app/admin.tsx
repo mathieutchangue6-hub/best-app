@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { router } from 'expo-router';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, StatusBar, SafeAreaView, Switch
@@ -37,7 +38,6 @@ export default function AdminScreen() {
   };
 
   const handleLogout = () => {
-    const { router } = require('expo-router');
     router.replace('/');
   };
 
