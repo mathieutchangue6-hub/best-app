@@ -19,6 +19,11 @@
       "package": "com.fantalgame.bestapp",
       "googleServicesFile": "./google-services.json",
       "newArchEnabled": true,
+      "config": {
+        "googleMaps": {
+          "apikey": "AIzaSyA6ZBcdFNrjBOPai_ylypLS3iu2G5o-xNQ"
+        }
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -26,7 +31,7 @@
         "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED"
       ]
-    },
+    }
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.fantalgame.bestapp",
