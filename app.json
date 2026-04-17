@@ -31,7 +31,7 @@
         "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED"
       ]
-    }
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.fantalgame.bestapp",
