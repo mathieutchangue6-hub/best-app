@@ -21,7 +21,7 @@
       "newArchEnabled": true,
       "config": {
         "googleMaps": {
-          "apikey": "AIzaSyA6ZBcdFNrjBOPai_ylypLS3iu2G5o-xNQ"
+          "apiKey": "AIzaSyA6ZBcdFNrjBOPai_ylypLS3iu2G5o-xNQ"
         }
       },
       "permissions": [
