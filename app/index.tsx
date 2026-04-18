@@ -6,6 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ADMIN_PIN = '2580';
+const VIEWER_PIN = '0852';
 const COLORS = ['#FF6B35','#E91E8C','#00C9FF','#A8FF3E','#FFD700','#FF9FF3','#4ECDC4','#FF4757'];
 const EMOJIS = ['👨','👩','👦','👧','👴','👵','👶','🧒'];
 
@@ -46,6 +47,9 @@ export default function LoginScreen() {
     setPin(newPin);
     if (newPin.length === 4) {
       if (newPin === ADMIN_PIN) {
+        const { router } = require('expo-router');
+        router.replace('/admin');
+      } else if (newPin === VIEWER_PIN) {
         const { router } = require('expo-router');
         router.replace('/admin');
       } else {
