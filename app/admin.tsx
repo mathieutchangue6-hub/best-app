@@ -1,21 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, StatusBar, SafeAreaView, Switch, Animated, Dimensions,
-  Platform
+  Alert, StatusBar, SafeAreaView, Switch, Animated, Dimensions, Linking,
 } from 'react-native';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import firestore from '@react-native-firebase/firestore';
 import * as Location from 'expo-location';
 import DeviceInfo from 'react-native-device-info';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ─── PIN CONFIG ──────────────────────────────────────────────────────────────
-const ADMIN_PIN = '2580';       // PIN admin (lié à l'appareil)
-const VIEWER_PIN = '0852';      // PIN viewer (voit position admin depuis un autre appareil)
-
-// ─── MAP STYLE (dark) ────────────────────────────────────────────────────────
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0d1117' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
@@ -29,7 +23,7 @@ const DARK_MAP_STYLE = [
 
 export default function AdminScreen() {
   const [members, setMembers] = useState<any[]>([]);
-  const [tab, setTab] = useState<'carte' | 'membres' | 'acces' | 'historique'>('carte');
+  const [tab, setTab] = useState<'carte' | 'membres' | 'acces' | 'historique' | 'quick'>('carte');
   const [selMember, setSelMember] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [mapType, setMapType] = useState<'standard' | 'satellite' | 'terrain'>('standard');
@@ -40,42 +34,52 @@ export default function AdminScreen() {
   const panelAnim = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<MapView>(null);
 
-  // ─── Auth: check device ──────────────────────────────────────────────────
+  // ── Device check ─────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
-        // On stocke l'ID d'appareil admin dans Firestore lors du premier login PIN 2580
         const adminDoc = await firestore().collection('config').doc('adminDevice').get();
         const deviceId = await DeviceInfo.getUniqueId();
         if (adminDoc.exists && adminDoc.data()?.deviceId === deviceId) {
           setIsAdminDevice(true);
         } else if (!adminDoc.exists) {
-          // Premier lancement : enregistre cet appareil comme admin
           await firestore().collection('config').doc('adminDevice').set({ deviceId });
           setIsAdminDevice(true);
         }
-      } catch (e) {
-        // Fallback : considérer comme admin si erreur (ex: offline)
+      } catch {
         setIsAdminDevice(true);
       }
     })();
   }, []);
 
-  // ─── Admin location tracking ─────────────────────────────────────────────
+  // ── Admin GPS ultra-précis ────────────────────────────────────────────────
   useEffect(() => {
     if (!isAdminDevice) return;
     let sub: any;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
+      // Position immédiate haute précision
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      setAdminLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      mapRef.current?.animateToRegion({
+        latitude: loc.coords.latitude, longitude: loc.coords.longitude,
+        latitudeDelta: 0.008, longitudeDelta: 0.008,
+      }, 800);
+      // Suivi continu toutes les 5 secondes / 5 mètres
       sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 15000, distanceInterval: 10 },
-        (loc) => {
-          const { latitude, longitude } = loc.coords;
-          setAdminLocation({ lat: latitude, lng: longitude });
-          // Sauvegarde position admin dans Firestore pour le viewer PIN
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 5000,
+          distanceInterval: 5,
+        },
+        (l) => {
+          setAdminLocation({ lat: l.coords.latitude, lng: l.coords.longitude });
           firestore().collection('config').doc('adminLocation').set({
-            lat: latitude, lng: longitude, updatedAt: firestore.FieldValue.serverTimestamp()
+            lat: l.coords.latitude, lng: l.coords.longitude,
+            updatedAt: firestore.FieldValue.serverTimestamp(),
           });
         }
       );
@@ -83,18 +87,18 @@ export default function AdminScreen() {
     return () => sub?.remove?.();
   }, [isAdminDevice]);
 
-  // ─── Firestore listeners ─────────────────────────────────────────────────
+  // ── Firestore ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsubM = firestore().collection('members').onSnapshot(snap => {
       setMembers(snap.docs.map(d => ({ ...d.data(), uid: d.id })));
     });
-    const unsubH = firestore().collection('history').orderBy('timestamp', 'desc').limit(30).onSnapshot(snap => {
-      setHistory(snap.docs.map(d => d.data()));
-    });
+    const unsubH = firestore().collection('history')
+      .orderBy('timestamp', 'desc').limit(30)
+      .onSnapshot(snap => setHistory(snap.docs.map(d => d.data())));
     return () => { unsubM(); unsubH(); };
   }, []);
 
-  // ─── Panel animation ─────────────────────────────────────────────────────
+  // ── Panel ─────────────────────────────────────────────────────────────────
   const togglePanel = () => {
     const toValue = panelOpen ? 0 : 1;
     Animated.spring(panelAnim, { toValue, useNativeDriver: true, tension: 65, friction: 11 }).start();
@@ -103,36 +107,37 @@ export default function AdminScreen() {
 
   const panelTranslateY = panelAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [SCREEN_HEIGHT * 0.38, 0],
+    outputRange: [SCREEN_HEIGHT * 0.4, 0],
   });
 
-  // ─── Map center on admin ──────────────────────────────────────────────────
+  // ── Map ───────────────────────────────────────────────────────────────────
   const centerOnAdmin = () => {
-    const loc = adminLocation;
-    if (!loc) { Alert.alert('Position indisponible'); return; }
+    if (!adminLocation) { Alert.alert('Position admin indisponible'); return; }
     mapRef.current?.animateToRegion({
-      latitude: loc.lat, longitude: loc.lng, latitudeDelta: 0.01, longitudeDelta: 0.01
+      latitude: adminLocation.lat, longitude: adminLocation.lng,
+      latitudeDelta: 0.005, longitudeDelta: 0.005,
     }, 600);
   };
 
-  // ─── Center on member ─────────────────────────────────────────────────────
   const focusMember = (m: any) => {
     if (!m.lat || !m.lng) { Alert.alert('Position inconnue pour ' + m.name); return; }
     setSelMember(m);
-    mapRef.current?.animateToRegion({
-      latitude: m.lat, longitude: m.lng, latitudeDelta: 0.01, longitudeDelta: 0.01
-    }, 600);
     if (tab !== 'carte') setTab('carte');
+    setTimeout(() => {
+      mapRef.current?.animateToRegion({
+        latitude: m.lat, longitude: m.lng,
+        latitudeDelta: 0.005, longitudeDelta: 0.005,
+      }, 600);
+    }, 100);
   };
 
-  // ─── Tracking toggle ─────────────────────────────────────────────────────
+  // ── Firestore actions ─────────────────────────────────────────────────────
   const toggleTracking = async (uid: string, val: boolean) => {
     await firestore().collection('members').doc(uid).update({ trackingEnabled: val });
   };
 
-  // ─── Delete member ───────────────────────────────────────────────────────
   const deleteMember = (uid: string, name: string) => {
-    Alert.alert('Supprimer ' + name, 'Cette action supprimera définitivement ce membre.', [
+    Alert.alert('Supprimer ' + name, 'Action irréversible.', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive', onPress: async () => {
@@ -154,34 +159,28 @@ export default function AdminScreen() {
     const s = (Date.now() - d.getTime()) / 1000;
     if (s < 60) return 'À l\'instant';
     if (s < 3600) return Math.floor(s / 60) + ' min';
-    return Math.floor(s / 3600) + 'h';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    return Math.floor(s / 86400) + 'j';
   };
 
   const activeMembers = members.filter(m => m.lat && m.lng);
-
   const initialRegion = adminLocation
-    ? { latitude: adminLocation.lat, longitude: adminLocation.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 }
-    : activeMembers.length > 0
-    ? {
-        latitude: activeMembers.reduce((s, m) => s + m.lat, 0) / activeMembers.length,
-        longitude: activeMembers.reduce((s, m) => s + m.lng, 0) / activeMembers.length,
-        latitudeDelta: 0.05, longitudeDelta: 0.05
-      }
+    ? { latitude: adminLocation.lat, longitude: adminLocation.lng, latitudeDelta: 0.008, longitudeDelta: 0.008 }
     : { latitude: 4.05, longitude: 9.7, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-  // ─── TABS ─────────────────────────────────────────────────────────────────
   const TABS = [
-    { key: 'carte', label: '🗺️ Carte' },
-    { key: 'membres', label: '👨‍👩‍👧‍👦 Membres' },
-    { key: 'acces', label: '🔐 Accès' },
+    { key: 'carte',      label: '🗺️ Carte' },
+    { key: 'membres',    label: '👨‍👩‍👧‍👦 Membres' },
+    { key: 'acces',      label: '🔐 Accès' },
     { key: 'historique', label: '📋 Historique' },
+    { key: 'quick',      label: '🔍 Quick' },
   ] as const;
 
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" backgroundColor="#060B18" />
 
-      {/* ── HEADER ── */}
+      {/* ── Header + Tabs ── */}
       <SafeAreaView style={s.headerSafe}>
         <View style={s.header}>
           <View>
@@ -200,19 +199,13 @@ export default function AdminScreen() {
           </View>
         </View>
 
-        {/* ── TABS ── */}
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
+          horizontal showsHorizontalScrollIndicator={false}
           style={s.tabBar}
           contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 8 }}
         >
           {TABS.map(t => (
-            <TouchableOpacity
-              key={t.key}
-              style={[s.tbtn, tab === t.key && s.tbtnA]}
-              onPress={() => setTab(t.key)}
-            >
+            <TouchableOpacity key={t.key} style={[s.tbtn, tab === t.key && s.tbtnA]} onPress={() => setTab(t.key)}>
               <Text style={[s.tbtnT, tab === t.key && s.tbtnTA]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
@@ -220,12 +213,10 @@ export default function AdminScreen() {
       </SafeAreaView>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          TAB : CARTE (plein écran)
+          TAB : CARTE
       ══════════════════════════════════════════════════════════════════════ */}
       {tab === 'carte' && (
         <View style={s.mapContainer}>
-
-          {/* Carte plein écran */}
           <MapView
             ref={mapRef}
             style={StyleSheet.absoluteFill}
@@ -237,13 +228,8 @@ export default function AdminScreen() {
             showsCompass={false}
             showsMyLocationButton={false}
           >
-            {/* Membres */}
             {activeMembers.map(m => (
-              <Marker
-                key={m.uid}
-                coordinate={{ latitude: m.lat, longitude: m.lng }}
-                onPress={() => setSelMember(m)}
-              >
+              <Marker key={m.uid} coordinate={{ latitude: m.lat, longitude: m.lng }} onPress={() => setSelMember(m)}>
                 <View style={[s.markerWrap, { borderColor: m.color || '#A8FF3E' }]}>
                   <Text style={{ fontSize: 18 }}>{m.emoji || '👤'}</Text>
                 </View>
@@ -252,53 +238,30 @@ export default function AdminScreen() {
                 </View>
               </Marker>
             ))}
-
-            {/* Position admin */}
             {adminLocation && (
-              <Marker
-                coordinate={{ latitude: adminLocation.lat, longitude: adminLocation.lng }}
-                anchor={{ x: 0.5, y: 0.5 }}
-              >
-                <View style={s.adminMarker}>
-                  <Text style={{ fontSize: 22 }}>📌</Text>
-                </View>
+              <Marker coordinate={{ latitude: adminLocation.lat, longitude: adminLocation.lng }} anchor={{ x: 0.5, y: 0.5 }}>
+                <View style={s.adminMarker}><Text style={{ fontSize: 22 }}>📌</Text></View>
               </Marker>
             )}
           </MapView>
 
-          {/* ── Boutons carte (haut-droite) ── */}
+          {/* Boutons mode carte */}
           <View style={s.mapControls}>
             <TouchableOpacity style={s.mapCtrlBtn} onPress={centerOnAdmin}>
               <Text style={{ fontSize: 16 }}>📌</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.mapCtrlBtn, mapType === 'standard' && s.mapCtrlBtnActive]}
-              onPress={() => setMapType('standard')}
-            >
+            <TouchableOpacity style={[s.mapCtrlBtn, mapType === 'standard' && s.mapCtrlBtnActive]} onPress={() => setMapType('standard')}>
               <Text style={{ fontSize: 16 }}>🌐</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.mapCtrlBtn, mapType === 'satellite' && s.mapCtrlBtnActive]}
-              onPress={() => setMapType('satellite')}
-            >
+            <TouchableOpacity style={[s.mapCtrlBtn, mapType === 'satellite' && s.mapCtrlBtnActive]} onPress={() => setMapType('satellite')}>
               <Text style={{ fontSize: 16 }}>🛰️</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.mapCtrlBtn, mapType === 'terrain' && s.mapCtrlBtnActive]}
-              onPress={() => setMapType('terrain')}
-            >
+            <TouchableOpacity style={[s.mapCtrlBtn, mapType === 'terrain' && s.mapCtrlBtnActive]} onPress={() => setMapType('terrain')}>
               <Text style={{ fontSize: 16 }}>🏔️</Text>
             </TouchableOpacity>
           </View>
 
-          {/* ── Bouton toggle panel ── */}
-          <TouchableOpacity style={s.panelToggleBtn} onPress={togglePanel}>
-            <Text style={{ fontSize: 12, color: '#060B18', fontWeight: '700' }}>
-              {panelOpen ? '▼ Fermer' : '▲ Membres'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* ── Fiche membre sélectionné (flottante) ── */}
+          {/* Fiche membre sélectionné */}
           {selMember && (
             <View style={[s.detailCard, { borderColor: selMember.color || '#A8FF3E' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -334,20 +297,30 @@ export default function AdminScreen() {
             </View>
           )}
 
-          {/* ══════════════════════════════════════════════════════════════
-              PANEL COULISSANT : liste membres
-          ══════════════════════════════════════════════════════════════ */}
+          {/* Bouton panel — zIndex 35 */}
+          <TouchableOpacity style={s.panelToggleBtn} onPress={togglePanel}>
+            <Text style={{ fontSize: 12, color: '#060B18', fontWeight: '700' }}>
+              {panelOpen ? '▼ Fermer' : '▲ Membres'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Panel coulissant */}
           <Animated.View style={[s.slidingPanel, { transform: [{ translateY: panelTranslateY }] }]}>
-            <View style={s.panelHandle} />
+            <TouchableOpacity onPress={togglePanel} style={s.panelHandleArea} activeOpacity={0.6}>
+              <View style={s.panelHandle} />
+              <Text style={s.panelHandleHint}>{panelOpen ? '▼ fermer' : '▲ ouvrir'}</Text>
+            </TouchableOpacity>
             <Text style={s.panelTitle}>👨‍👩‍👧‍👦 Membres — appuie pour localiser</Text>
             <ScrollView
-              horizontal={false}
               showsVerticalScrollIndicator={false}
-              style={{ maxHeight: SCREEN_HEIGHT * 0.32 }}
+              style={{ maxHeight: SCREEN_HEIGHT * 0.3 }}
               contentContainerStyle={{ paddingBottom: 16 }}
             >
               {members.map(m => (
-                <MemberCard key={m.uid} m={m} onPress={() => focusMember(m)} timeAgo={timeAgo} />
+                <MemberCard
+                  key={m.uid} m={m} timeAgo={timeAgo}
+                  onPress={() => { focusMember(m); if (panelOpen) togglePanel(); }}
+                />
               ))}
             </ScrollView>
           </Animated.View>
@@ -360,12 +333,7 @@ export default function AdminScreen() {
       {tab === 'membres' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14 }}>
           {members.map(m => (
-            <MemberCard
-              key={m.uid}
-              m={m}
-              onPress={() => { setTab('carte'); focusMember(m); }}
-              timeAgo={timeAgo}
-            />
+            <MemberCard key={m.uid} m={m} onPress={() => focusMember(m)} timeAgo={timeAgo} />
           ))}
         </ScrollView>
       )}
@@ -429,11 +397,101 @@ export default function AdminScreen() {
           ))}
         </ScrollView>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB : QUICK LOCATION
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'quick' && (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+
+          {/* Titre */}
+          <View style={s.quickHeader}>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🔍</Text>
+            <Text style={s.quickTitle}>Quick Location</Text>
+            <Text style={s.quickSub}>
+              Pour localiser un téléphone{'\n'}non inscrit dans Best
+            </Text>
+          </View>
+
+          {/* Explication */}
+          <View style={s.quickInfoCard}>
+            <Text style={{ color: '#FFA502', fontSize: 12, lineHeight: 20 }}>
+              ⚠️ <Text style={{ fontWeight: '700' }}>Comment ça marche :</Text>{'\n'}
+              Appuie sur le bouton correspondant à l'appareil de la personne. 
+              Le service s'ouvre directement. Entre son compte Gmail (Android) 
+              ou son identifiant Apple (iPhone) pour voir sa position.{'\n\n'}
+              ✅ <Text style={{ fontWeight: '700' }}>Condition :</Text> La personne doit avoir activé 
+              "Localiser mon appareil" dans ses paramètres au préalable.
+            </Text>
+          </View>
+
+          {/* Android */}
+          <View style={s.quickCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <View style={s.quickIconWrap}>
+                <Text style={{ fontSize: 28 }}>🤖</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.quickCardTitle}>Android</Text>
+                <Text style={s.quickCardSub}>Google Find My Device</Text>
+              </View>
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 12, lineHeight: 17 }}>
+              Localise n'importe quel téléphone Android lié à un compte Google. 
+              Entre son adresse Gmail quand la page s'ouvre.
+            </Text>
+            <TouchableOpacity
+              style={s.quickBtnAndroid}
+              onPress={() => Linking.openURL('https://www.google.com/android/find')}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                🔍 Ouvrir Google Find My Device
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* iPhone */}
+          <View style={s.quickCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <View style={[s.quickIconWrap, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                <Text style={{ fontSize: 28 }}>🍎</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.quickCardTitle}>iPhone</Text>
+                <Text style={s.quickCardSub}>Apple Find My / Localiser</Text>
+              </View>
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 12, lineHeight: 17 }}>
+              Localise un iPhone via iCloud. Entre son identifiant Apple 
+              (adresse email Apple) quand la page s'ouvre.
+            </Text>
+            <TouchableOpacity
+              style={s.quickBtnApple}
+              onPress={() => Linking.openURL('https://www.icloud.com/find')}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                🔍 Ouvrir Apple Find My
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Astuce finale */}
+          <View style={[s.quickInfoCard, { borderColor: 'rgba(168,255,62,0.2)', backgroundColor: 'rgba(168,255,62,0.05)' }]}>
+            <Text style={{ color: '#A8FF3E', fontSize: 12, lineHeight: 20 }}>
+              💡 <Text style={{ fontWeight: '700' }}>Conseil préventif :</Text>{'\n'}
+              Demande à chaque membre de ta famille d'installer Best et de s'inscrire 
+              dès maintenant — avant toute urgence. C'est la solution la plus fiable 
+              et la plus précise.
+            </Text>
+          </View>
+
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-// ─── MemberCard ──────────────────────────────────────────────────────────────
+// ─── MemberCard ───────────────────────────────────────────────────────────────
 function MemberCard({ m, onPress, timeAgo }: any) {
   const bat = m.battery || 0;
   const bc = bat < 20 ? '#FF4757' : bat < 40 ? '#FFA502' : m.color || '#A8FF3E';
@@ -452,10 +510,7 @@ function MemberCard({ m, onPress, timeAgo }: any) {
               backgroundColor: m.status === 'En déplacement' ? 'rgba(168,255,62,0.15)' : 'rgba(255,255,255,0.08)',
               paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20
             }}>
-              <Text style={{
-                color: m.status === 'En déplacement' ? '#A8FF3E' : 'rgba(255,255,255,0.4)',
-                fontSize: 9
-              }}>
+              <Text style={{ color: m.status === 'En déplacement' ? '#A8FF3E' : 'rgba(255,255,255,0.4)', fontSize: 9 }}>
                 {m.status === 'En déplacement' ? '● MOUV.' : '● ARRÊTÉ'}
               </Text>
             </View>
@@ -477,10 +532,9 @@ function MemberCard({ m, onPress, timeAgo }: any) {
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
+// ─── STYLES ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#060B18' },
-
   headerSafe: { backgroundColor: '#060B18', zIndex: 10 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -499,47 +553,24 @@ const s = StyleSheet.create({
     borderRadius: 17, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
   },
-
-  // ── Tabs ──
   tabBar: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  tbtn: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    // Taille fixe pour éviter que l'onglet actif "grossisse"
-    minWidth: 90, alignItems: 'center'
-  },
+  tbtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', minWidth: 80, alignItems: 'center' },
   tbtnA: { backgroundColor: '#A8FF3E' },
   tbtnT: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600' },
   tbtnTA: { color: '#060B18' },
 
   // ── Map ──
   mapContainer: { flex: 1, position: 'relative' },
-
-  mapControls: {
-    position: 'absolute', top: 12, right: 12,
-    gap: 8, flexDirection: 'column', zIndex: 20,
-  },
+  mapControls: { position: 'absolute', top: 12, right: 12, gap: 8, zIndex: 20 },
   mapCtrlBtn: {
-    width: 42, height: 42, borderRadius: 12,
-    backgroundColor: 'rgba(6,11,24,0.85)',
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(6,11,24,0.88)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  mapCtrlBtnActive: {
-    backgroundColor: 'rgba(168,255,62,0.2)',
-    borderColor: '#A8FF3E',
-  },
-
-  panelToggleBtn: {
-    position: 'absolute', bottom: 12, alignSelf: 'center', left: '30%', right: '30%',
-    backgroundColor: '#A8FF3E', borderRadius: 24,
-    paddingVertical: 9, paddingHorizontal: 18,
-    alignItems: 'center', zIndex: 25,
-    shadowColor: '#A8FF3E', shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
-  },
-
+  mapCtrlBtnActive: { backgroundColor: 'rgba(168,255,62,0.2)', borderColor: '#A8FF3E' },
   adminMarker: {
-    width: 38, height: 38, borderRadius: 19,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(168,255,62,0.2)',
     borderWidth: 2.5, borderColor: '#A8FF3E',
     alignItems: 'center', justifyContent: 'center',
@@ -549,79 +580,87 @@ const s = StyleSheet.create({
     backgroundColor: '#0D1528', borderWidth: 2.5,
     alignItems: 'center', justifyContent: 'center',
   },
-  markerLabel: {
-    paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
-    marginTop: 2, alignSelf: 'center',
-  },
-
-  // ── Fiche membre sélectionné ──
+  markerLabel: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginTop: 2, alignSelf: 'center' },
   detailCard: {
     position: 'absolute', top: 12, left: 12, right: 64,
-    padding: 12, backgroundColor: 'rgba(8,12,28,0.95)',
+    padding: 12, backgroundColor: 'rgba(8,12,28,0.96)',
     borderWidth: 1, borderRadius: 14, zIndex: 20,
   },
   detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  detailItem: {
-    flex: 1, minWidth: '45%', padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10,
-  },
+  detailItem: { flex: 1, minWidth: '45%', padding: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10 },
   detailL: { color: 'rgba(255,255,255,0.4)', fontSize: 10, marginBottom: 2 },
   detailV: { fontWeight: '600', fontSize: 11, color: '#fff' },
-  closeBtn: {
-    width: 26, height: 26, backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+  closeBtn: { width: 26, height: 26, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  panelToggleBtn: {
+    position: 'absolute', bottom: 14,
+    left: '28%', right: '28%',
+    backgroundColor: '#A8FF3E', borderRadius: 24,
+    paddingVertical: 10, paddingHorizontal: 18,
+    alignItems: 'center', zIndex: 35,
+    shadowColor: '#A8FF3E', shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-
-  // ── Panel coulissant ──
   slidingPanel: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(8,12,28,0.97)',
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
     borderTopWidth: 1, borderColor: 'rgba(168,255,62,0.2)',
-    paddingTop: 8, paddingHorizontal: 14, paddingBottom: 4,
-    zIndex: 30,
-    maxHeight: SCREEN_HEIGHT * 0.45,
+    paddingHorizontal: 14, paddingBottom: 8, zIndex: 30,
+    maxHeight: SCREEN_HEIGHT * 0.48,
   },
-  panelHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'center', marginBottom: 10,
-  },
-  panelTitle: {
-    color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 10,
-    fontFamily: 'monospace',
-  },
+  panelHandleArea: { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
+  panelHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.25)' },
+  panelHandleHint: { color: 'rgba(255,255,255,0.2)', fontSize: 10, marginTop: 3 },
+  panelTitle: { color: 'rgba(255,255,255,0.45)', fontSize: 11, marginBottom: 8, fontFamily: 'monospace' },
 
-  // ── Member card ──
+  // ── Cards communes ──
   mc: {
     padding: 12, backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', borderRadius: 12, marginBottom: 8,
   },
-  mav: {
-    width: 42, height: 42, borderRadius: 21,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2,
-  },
-
-  // ── Accès ──
+  mav: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   accessRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     padding: 14, backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', marginBottom: 8,
   },
-  delBtn: {
-    padding: 8, backgroundColor: 'rgba(255,71,87,0.15)',
-    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,71,87,0.3)',
-  },
-
-  // ── Historique ──
+  delBtn: { padding: 8, backgroundColor: 'rgba(255,71,87,0.15)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,71,87,0.3)' },
   histItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 12, backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', marginBottom: 8,
   },
-  histIcon: {
-    width: 32, height: 32, backgroundColor: 'rgba(168,255,62,0.15)',
-    borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+  histIcon: { width: 32, height: 32, backgroundColor: 'rgba(168,255,62,0.15)', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Quick Location ──
+  quickHeader: {
+    alignItems: 'center', paddingVertical: 20,
+    marginBottom: 16,
+  },
+  quickTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  quickSub: { color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  quickInfoCard: {
+    padding: 14, backgroundColor: 'rgba(255,165,2,0.08)',
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,165,2,0.25)',
+    marginBottom: 14,
+  },
+  quickCard: {
+    padding: 16, backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 14,
+  },
+  quickCardTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  quickCardSub: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
+  quickIconWrap: {
+    width: 52, height: 52, borderRadius: 14,
+    backgroundColor: 'rgba(168,255,62,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickBtnAndroid: {
+    backgroundColor: '#34A853',
+    borderRadius: 12, padding: 13, alignItems: 'center',
+  },
+  quickBtnApple: {
+    backgroundColor: '#555',
+    borderRadius: 12, padding: 13, alignItems: 'center',
   },
 });
